@@ -109,14 +109,18 @@ class Packet:
 
     def GetString(self, skipNULL= False, termNULL = False, len=0):
         self.out = ''
+        lastChar = 0
         count = 0
         for data in self.content:
             count = count + 1
+            if (lastChar == 0):
+                lastChar = ord(data)
             if (len > 0 and count >= len):
                 break
             if (termNULL == True):
-                if ord(data) == 0:
-                    break
+                if (lastChar > 0):
+                    if ord(data) == 0:
+                        break
             if (skipNULL == True):
                 if ord(data) == 0:
                     continue
@@ -124,13 +128,13 @@ class Packet:
         self.content = self.content[count:]
         return self.out
 
-
 class Client:
     def __init__(self, socket):
         self.socket = socket
         self.conInit = False
         self.packet = Packet()
 
+        self.scramble = '12345678901234567890'
         self.capflags = 0
         self.charSet = 0
         self.sequenceNumber = 0
@@ -143,13 +147,15 @@ class Client:
         self.packet.uint8(10)
         self.packet.string("Pudel des Todes", True)
         self.packet.uint32(01) #connectionnumber
-        self.packet.string("a-Z`RZOZ")
+        self.packet.string(self.scramble[0:8], True) #RND for Password Part1
         self.packet.uint8(00)
         self.packet.HexBlob("ff f7")
         self.packet.uint8(8) #LaenderCode
         self.packet.HexBlob("02 00")
         self.packet.uint16(250) #CapabilityFlags
-        self.packet.HexBlob("15 00 00 00 00 00 00 00 00 00 00 76 22 3f 58 7d 2c 62 28 3f 46 21 6f 00 6d 79 73 71 6c 5f 6e 61 74 69 76 65 5f 70 61 73 73 77 6f 72 64 00")
+        self.packet.HexBlob("15 00 00 00 00 00 00 00 00 00 00")
+        self.packet.string(self.scramble[8:], True) #RND for Password Part2
+        self.packet.string("mysql_native_password", True)
         self.socket.send(self.packet.GetPacket(00))
         return
 
@@ -158,7 +164,10 @@ class Client:
         temp = self.packet.GetUint32()  # Skip Max Packet Size
         self.charSet = self.packet.GetUint8()
         self.username = self.packet.GetString(True, False, 29)
-        temp = self.packet.GetString(False, True)
+        pwlength = self.packet.GetUint8()
+        if (pwlength != 0):
+            self.password = self.packet.GetString(False, False, pwlength+1) #Scrambled Password
+        temp = self.packet.GetString(False, True) #AuthPlugin
         self.conInit = True
         self.BuildResponsePacket(2)
         return
